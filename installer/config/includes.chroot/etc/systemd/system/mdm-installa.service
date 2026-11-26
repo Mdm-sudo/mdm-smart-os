@@ -1,0 +1,16 @@
+[Unit]
+Description=Installazione MDM Smart OS
+After=multi-user.target
+Conflicts=getty@tty1.service
+
+[Service]
+Type=idle
+ExecStart=/usr/local/sbin/mdm-installa
+StandardInput=tty
+StandardOutput=tty
+TTYPath=/dev/tty1
+TTYReset=yes
+TTYVHangup=yes
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,90 @@
+#!/bin/bash
+# MDM Smart OS – installazione automatica dalla chiavetta
+# Scrive MDM Smart OS sul disco interno del PC, poi riavvia.
+
+ROSSO='\033[1;31m'; VERDE='\033[1;32m'; GIALLO='\033[1;33m'; NORMALE='\033[0m'
+
+pausa_e_spegni() {
+  echo
+  read -rp "Premi Invio per spegnere il PC..." _
+  poweroff
+}
+
+clear
+cat /etc/mdm/banner.txt
+echo
+echo "  Installazione di MDM Smart OS"
+echo "  -----------------------------"
+echo
+
+IMG=$(ls /run/live/medium/mdm/*.img.xz 2>/dev/null | head -n1)
+if [ -z "$IMG" ]; then
+  echo -e "${ROSSO}Non trovo il file del sistema sulla chiavetta.${NORMALE}"
+  echo "Riscrivi la chiavetta con Balena Etcher."
+  pausa_e_spegni
+fi
+
+# Il disco da cui stiamo partendo (la chiavetta) non va mai toccato
+SRC=$(findmnt -no SOURCE /run/live/medium 2>/dev/null)
+CHIAVETTA=$(lsblk -no PKNAME "$SRC" 2>/dev/null | head -n1)
+[ -n "$CHIAVETTA" ] || CHIAVETTA=$(basename "$SRC")
+
+# Dischi interni possibili: tipo disco, almeno 16 GB, diversi dalla chiavetta
+mapfile -t DISCHI < <(lsblk -dnbo NAME,SIZE,TYPE | awk -v c="$CHIAVETTA" '$3=="disk" && $1!=c && $1 !~ /^(loop|sr|zram)/ && $2>=16000000000 {print $1}')
+
+if [ ${#DISCHI[@]} -eq 0 ]; then
+  echo -e "${ROSSO}Non trovo nessun disco interno di almeno 16 GB.${NORMALE}"
+  echo "Controlla che il disco sia collegato e attivo nel BIOS."
+  pausa_e_spegni
+fi
+
+descrivi() {
+  local d="$1"
+  local gb modello
+  gb=$(( $(lsblk -dnbo SIZE "/dev/$d") / 1000000000 ))
+  modello=$(lsblk -dno MODEL "/dev/$d" | sed 's/ *$//')
+  echo "/dev/$d  ${gb} GB  ${modello:-disco}"
+}
+
+if [ ${#DISCHI[@]} -eq 1 ]; then
+  DISCO=${DISCHI[0]}
+else
+  echo "Ho trovato più dischi. Su quale installo MDM Smart OS?"
+  echo
+  for i in "${!DISCHI[@]}"; do echo "  $((i+1))) $(descrivi "${DISCHI[$i]}")"; done
+  echo
+  while :; do
+    read -rp "Numero del disco: " n
+    if [[ "$n" =~ ^[0-9]+$ ]] && [ "$n" -ge 1 ] && [ "$n" -le ${#DISCHI[@]} ]; then DISCO=${DISCHI[$((n-1))]}; break; fi
+  done
+fi
+
+echo
+echo -e "Installo MDM Smart OS su:  ${GIALLO}$(descrivi "$DISCO")${NORMALE}"
+echo
+echo -e "${ROSSO}ATTENZIONE: tutto quello che c'è su questo disco verrà cancellato.${NORMALE}"
+echo
+read -rp "Per continuare scrivi SI e premi Invio: " risposta
+if [ "${risposta^^}" != "SI" ]; then
+  echo "Installazione annullata, il disco non è stato toccato."
+  pausa_e_spegni
+fi
+
+echo
+echo "Scrittura in corso, non spegnere il PC (qualche minuto)..."
+TOTALE=$(xz --robot -l "$IMG" | awk '/^totals/{print $5}')
+if ! xz -dc "$IMG" | pv -s "$TOTALE" | dd of="/dev/$DISCO" bs=4M conv=fsync iflag=fullblock status=none; then
+  echo -e "${ROSSO}Errore durante la scrittura.${NORMALE} Riprova, o prova con un altro disco."
+  pausa_e_spegni
+fi
+sync
+
+echo
+echo -e "${VERDE}MDM Smart OS è installato!${NORMALE}"
+echo
+echo "  1. Togli la chiavetta"
+echo "  2. Premi Invio: il PC si riavvia e parte MDM Smart OS"
+echo "  3. Dopo qualche minuto apri http://mdm-smart.local:8123 da un altro dispositivo"
+echo
+read -rp "Premi Invio per riavviare..." _
+reboot

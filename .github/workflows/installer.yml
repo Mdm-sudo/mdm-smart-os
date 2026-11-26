@@ -1,0 +1,60 @@
+name: Crea chiavetta di installazione (ISO)
+
+# Prende il file MDM Smart OS dalla release e crea una ISO da scrivere
+# su chiavetta con Balena Etcher: si avvia e installa da sola sul disco.
+on:
+  workflow_dispatch:
+    inputs:
+      versione:
+        description: "Versione (tag della release). Vuoto = ultima"
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+
+jobs:
+  iso:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Scarica MDM Smart OS dalla release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${{ inputs.versione }}"
+          [ -n "$TAG" ] || TAG=$(gh release view -R "$GITHUB_REPOSITORY" --json tagName -q .tagName)
+          echo "TAG=$TAG" >> "$GITHUB_ENV"
+          gh release download "$TAG" -R "$GITHUB_REPOSITORY" -p "MDM-Smart-OS_*.img.xz" -D installer/config/includes.binary/mdm/
+          rm -f installer/config/includes.binary/mdm/.gitkeep
+          ls -la installer/config/includes.binary/mdm/
+
+      - name: Crea la ISO
+        run: |
+          chmod +x installer/config/hooks/normal/* installer/config/includes.chroot/usr/local/sbin/mdm-installa
+          docker run --rm --privileged -v "$PWD/installer:/build" -w /build debian:trixie bash -euxc '
+            apt-get update -qq
+            apt-get install -y -qq live-build >/dev/null
+            lb config \
+              --distribution trixie \
+              --archive-areas "main non-free-firmware" \
+              --binary-images iso-hybrid \
+              --bootloaders "grub-efi,syslinux" \
+              --debian-installer none \
+              --memtest none \
+              --iso-volume "MDM Smart OS" \
+              --iso-application "MDM Smart OS - Installazione" \
+              --iso-publisher "MDM Smart" \
+              --bootappend-live "boot=live components quiet splash loglevel=3"
+            lb build
+            ls -la *.iso
+          '
+          sudo mv installer/*.iso "MDM-Smart-OS-Installazione_${TAG}.iso"
+          sha256sum MDM-Smart-OS-Installazione_*.iso
+
+      - name: Aggiungi la ISO alla release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "$TAG" -R "$GITHUB_REPOSITORY" MDM-Smart-OS-Installazione_*.iso --clobber

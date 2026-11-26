@@ -1,0 +1,9 @@
+#!/bin/sh
+# Menu di avvio della chiavetta: nome MDM e partenza immediata
+for f in boot/grub/grub.cfg boot/grub/*.cfg isolinux/*.cfg; do
+  [ -f "$f" ] || continue
+  sed -i -e 's/Debian GNU\/Linux[^"]*/MDM Smart OS - Installazione/g' \
+         -e 's/Live system[^"]*/MDM Smart OS - Installazione/g' \
+         -e 's/^set timeout=.*/set timeout=3/' \
+         -e 's/^timeout .*/timeout 30/' "$f"
+done

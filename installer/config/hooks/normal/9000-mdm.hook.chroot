@@ -1,0 +1,6 @@
+#!/bin/sh
+set -e
+chmod 755 /usr/local/sbin/mdm-installa
+systemctl enable mdm-installa.service
+systemctl mask getty@tty1.service
+echo "mdm-installer" > /etc/hostname
