@@ -12,7 +12,7 @@ COPY build/icons/ /tmp/mdm/icons/
 COPY overlays/core/rebrand-core.sh /tmp/mdm/
 
 RUN set -eu; \
-    apk add --no-cache --virtual .mdm-build brotli bash; \
+    apk add --no-cache --virtual .mdm-build brotli bash perl; \
     BRAND_NAME="${BRAND_NAME}" BRAND_OS="${BRAND_OS}" bash /tmp/mdm/rebrand-core.sh; \
     apk del .mdm-build; \
     rm -rf /tmp/mdm

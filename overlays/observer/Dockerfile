@@ -5,7 +5,7 @@ FROM ${UPSTREAM} AS originale
 FROM alpine:3.22 AS lavoro
 ARG BRAND_NAME
 ARG BRAND_OS
-RUN apk add --no-cache bash
+RUN apk add --no-cache bash perl
 COPY --from=originale /usr/share/www /www
 COPY scripts/rebrand-text.sh /mdm/
 RUN BRAND_NAME="${BRAND_NAME}" BRAND_OS="${BRAND_OS}" bash /mdm/rebrand-text.sh /www

@@ -7,7 +7,7 @@ FROM ${UPSTREAM} AS originale
 FROM alpine:3.22 AS lavoro
 ARG BRAND_NAME
 ARG BRAND_OS
-RUN apk add --no-cache bash brotli
+RUN apk add --no-cache bash brotli perl
 COPY --from=originale /usr/share/www /www
 COPY scripts/rebrand-text.sh scripts/apply-icons.sh /mdm/
 COPY build/icons/ /mdm/icons/
