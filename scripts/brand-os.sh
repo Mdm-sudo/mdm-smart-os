@@ -64,6 +64,15 @@ else
   echo "== ATTENZIONE: nessun certificato MDM, aggiornamenti OS via rete non disponibili"
 fi
 
+echo "== Alleggerimento (il sistema deve stare nei 256 MB della partizione)"
+cat >> "$EXT/scripts/post-build.sh" <<'EOF'
+
+# MDM Smart: file di esempio e documentazione non usati dal sistema
+rm -rf "${TARGET_DIR}/usr/share/audit/sample-rules" \
+       "${TARGET_DIR}/usr/share/apparmor/extra-profiles" \
+       "${TARGET_DIR}/usr/share/doc" "${TARGET_DIR}/usr/share/man" "${TARGET_DIR}/usr/share/info"
+EOF
+
 echo "== Controllo finale"
 rimasti=$(grep -rIl "version.home-assistant.io\|ghcr.io/home-assistant/" \
   "$EXT/package/hassio" "$EXT/rootfs-overlay" 2>/dev/null || true)
