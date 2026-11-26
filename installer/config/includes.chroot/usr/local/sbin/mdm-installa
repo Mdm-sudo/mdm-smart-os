@@ -17,6 +17,20 @@ echo "  Installazione di MDM Smart OS"
 echo "  -----------------------------"
 echo
 
+# MDM Smart OS parte solo in modalità UEFI
+if [ ! -d /sys/firmware/efi ]; then
+  echo -e "${ROSSO}Questo PC è partito dalla chiavetta in modalità vecchia (BIOS/Legacy).${NORMALE}"
+  echo
+  echo "MDM Smart OS si avvia solo in modalità UEFI. Cosa fare:"
+  echo "  - entra nel BIOS e attiva UEFI (disattiva Legacy/CSM),"
+  echo "    poi riavvia scegliendo la voce della chiavetta che inizia con \"UEFI\";"
+  echo "  - se nel BIOS non c'è nessuna voce UEFI, il PC è troppo vecchio"
+  echo "    per MDM Smart OS: usa un altro PC o un NUC."
+  echo
+  echo "Il disco non è stato toccato."
+  pausa_e_spegni
+fi
+
 IMG=$(ls /run/live/medium/mdm/*.img.xz 2>/dev/null | head -n1)
 if [ -z "$IMG" ]; then
   echo -e "${ROSSO}Non trovo il file del sistema sulla chiavetta.${NORMALE}"
