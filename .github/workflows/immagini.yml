@@ -1,0 +1,128 @@
+name: Immagini e canale aggiornamenti MDM
+
+# Ogni notte controlla se è uscita una nuova versione ufficiale.
+# Se sì, crea le immagini con il marchio MDM e aggiorna il canale.
+on:
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+    inputs:
+      forza:
+        description: "Ricrea tutte le immagini anche se esistono già"
+        type: boolean
+        default: false
+  push:
+    branches: [main]
+    paths: ["branding/**", "overlays/**", "scripts/**"]
+
+permissions:
+  contents: read
+  packages: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: immagini
+  cancel-in-progress: false
+
+jobs:
+  immagini:
+    runs-on: ubuntu-24.04
+    outputs:
+      os_version: ${{ steps.ver.outputs.os_version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Impostazioni
+        id: cfg
+        run: |
+          set -a; . branding/brand.env; set +a
+          OWNER="${GITHUB_REPOSITORY_OWNER,,}"
+          REPO="${GITHUB_REPOSITORY#*/}"
+          [ -n "$VERSION_URL" ] || VERSION_URL="https://${OWNER}.github.io/${REPO}/"
+          for v in BRAND_NAME BRAND_OS MACHINE ARCH OWNER REPO VERSION_URL; do echo "$v=${!v}" >> "$GITHUB_ENV"; done
+
+      - name: Versioni ufficiali
+        run: |
+          curl -fsSL https://version.home-assistant.io/stable.json -o upstream.json
+          jq '{supervisor, core: .homeassistant.default, cli, observer, dns, audio, multicast, hassos: .hassos["generic-x86-64"]}' upstream.json
+
+      - name: Versione OS MDM pubblicata
+        id: ver
+        run: |
+          # L'ultima release del repository con l'immagine OS (se esiste)
+          OSV=$(curl -fsSL -H "Authorization: Bearer ${{ github.token }}" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/releases/latest" | jq -r '.tag_name // empty' || true)
+          echo "OS_VERSION=${OSV}" >> "$GITHUB_ENV"
+          echo "os_version=${OSV}" >> "$GITHUB_OUTPUT"
+
+      - name: Icone dal logo
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq imagemagick >/dev/null
+          test -f branding/logo.png || { echo "::error::Manca branding/logo.png"; exit 1; }
+          scripts/make-icons.sh branding/logo.png build/icons
+
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      - name: Crea le immagini MDM
+        env:
+          FORZA: ${{ inputs.forza || github.event_name == 'push' }}
+        run: |
+          set -euo pipefail
+          up() { jq -r --arg k "$1" --arg a "$ARCH" --arg m "$MACHINE" '.images[$k] | sub("{arch}";$a) | sub("{machine}";$m)' upstream.json; }
+          esiste() { docker buildx imagetools inspect "$1" >/dev/null 2>&1; }
+
+          crea() { # componente  nome-immagine  tag  overlay
+            local src="$(up "$1"):$3"
+            local dst="ghcr.io/${OWNER}/${2##*/}:$3"
+            if [ "$FORZA" != "true" ] && esiste "$dst"; then echo "✔ $dst già presente"; return; fi
+            echo "➜ creo $dst da $src"
+            docker buildx build --push --platform "linux/${ARCH}" \
+              --build-arg UPSTREAM="$src" \
+              --build-arg BRAND_NAME="$BRAND_NAME" --build-arg BRAND_OS="$BRAND_OS" \
+              --build-arg OWNER="$OWNER" --build-arg VERSION_URL="$VERSION_URL" \
+              -f "overlays/$4/Dockerfile" -t "$dst" .
+          }
+          copia() { # componente  tag   (immagini senza marchio visibile: solo copiate)
+            local src="$(up "$1"):$2"
+            local dst="ghcr.io/${OWNER}/$(up "$1" | sed 's|.*/||'):$2"
+            if esiste "$dst"; then echo "✔ $dst già presente"; return; fi
+            echo "➜ copio $src"
+            docker buildx imagetools create -t "$dst" "$src"
+          }
+
+          crea core        "$(up core)"       "$(jq -r .homeassistant.default upstream.json)" core
+          crea core        "$(up core)"       landingpage                                     landingpage
+          crea supervisor  "$(up supervisor)" "$(jq -r .supervisor upstream.json)"            supervisor
+          crea cli         "$(up cli)"        "$(jq -r .cli upstream.json)"                   cli
+          crea observer    "$(up observer)"   "$(jq -r .observer upstream.json)"              observer
+          copia dns       "$(jq -r .dns upstream.json)"
+          copia audio     "$(jq -r .audio upstream.json)"
+          copia multicast "$(jq -r .multicast upstream.json)"
+
+      - name: Canale aggiornamenti
+        run: |
+          mkdir -p site
+          scripts/make-version-json.sh upstream.json site/stable.json
+          for f in apparmor.txt apparmor_stable.txt; do
+            curl -fsSL "https://version.home-assistant.io/$f" -o "site/$f"
+          done
+          echo "MDM Smart OS – canale aggiornamenti" > site/index.html
+          cat site/stable.json
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  pubblica:
+    needs: immagini
+    runs-on: ubuntu-24.04
+    environment:
+      name: github-pages
+    steps:
+      - uses: actions/deploy-pages@v4

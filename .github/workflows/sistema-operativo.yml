@@ -1,0 +1,107 @@
+name: Crea MDM Smart OS (file da installare)
+
+# Si avvia a mano da GitHub: Actions → "Crea MDM Smart OS" → Run workflow.
+# Dura circa 2-4 ore. Alla fine trovi il file .img.xz nella pagina Releases.
+on:
+  workflow_dispatch:
+    inputs:
+      versione:
+        description: "Versione dell'OS di base (vuoto = ultima stabile)"
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 355
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: mdm
+
+      - name: Impostazioni
+        run: |
+          set -a; . mdm/branding/brand.env; set +a
+          OWNER="${GITHUB_REPOSITORY_OWNER,,}"
+          REPO="${GITHUB_REPOSITORY#*/}"
+          [ -n "$VERSION_URL" ] || VERSION_URL="https://${OWNER}.github.io/${REPO}/"
+          OSV="${{ inputs.versione }}"
+          [ -n "$OSV" ] || OSV=$(curl -fsSL https://version.home-assistant.io/stable.json | jq -r '.hassos["generic-x86-64"]')
+          for v in BRAND_NAME BRAND_OS BRAND_HOSTNAME MACHINE OS_BOARD OWNER REPO VERSION_URL OSV; do echo "$v=${!v}" >> "$GITHUB_ENV"; done
+          echo "Versione OS di base: $OSV"
+
+      - name: Il canale MDM deve essere già pubblicato
+        run: |
+          curl -fsSL "${VERSION_URL}stable.json" | jq -e '.images.core | test("ghcr.io/'"${OWNER}"'/")' \
+            || { echo "::error::Prima esegui il workflow 'Immagini e canale aggiornamenti MDM' e rendi pubbliche le immagini"; exit 1; }
+
+      - name: Codice dell'OS ufficiale
+        run: git clone --depth 1 --branch "$OSV" --recurse-submodules --shallow-submodules https://github.com/home-assistant/operating-system.git os
+
+      - name: Certificato aggiornamenti MDM
+        env:
+          MDM_OTA_CERT: ${{ secrets.MDM_OTA_CERT }}
+          MDM_OTA_KEY: ${{ secrets.MDM_OTA_KEY }}
+        run: |
+          if [ -n "$MDM_OTA_CERT" ] && [ -n "$MDM_OTA_KEY" ]; then
+            printf '%s\n' "$MDM_OTA_CERT" > os/cert.pem
+            printf '%s\n' "$MDM_OTA_KEY"  > os/key.pem
+            chmod 600 os/key.pem
+            echo "MDM_OTA_CERT=$PWD/os/cert.pem" >> "$GITHUB_ENV"
+          else
+            echo "::warning::Segreti MDM_OTA_CERT/MDM_OTA_KEY mancanti: l'OS non potrà aggiornarsi via rete"
+          fi
+
+      - name: Marchio MDM
+        run: mdm/scripts/brand-os.sh os
+
+      - name: Spazio su disco
+        run: |
+          sudo rm -rf /usr/local/lib/android /opt/hostedtoolcache/CodeQL /usr/share/dotnet /opt/ghc
+          sudo mkdir -p /mnt/cache /mnt/output
+          sudo chown -R "$(id -u):$(id -g)" /mnt/cache /mnt/output
+          df -h
+
+      - uses: actions/cache@v4
+        with:
+          path: /mnt/cache/cc
+          key: mdm-os-cc-${{ env.OSV }}
+          restore-keys: mdm-os-cc-
+
+      - name: Compilazione (lunga)
+        working-directory: os
+        run: |
+          docker build -t mdm-os-builder .
+          run() {
+            docker run --rm --privileged \
+              -e BUILDER_UID="$(id -u)" -e BUILDER_GID="$(id -g)" \
+              -v "$PWD:/build" -v /mnt/cache:/cache -v /mnt/output:/build/output \
+              mdm-os-builder "$@"
+          }
+          run make "${OS_BOARD}_defconfig"
+          run make
+
+      - name: Prepara i file
+        run: |
+          cd /mnt/output/images
+          ls -la
+          IMG=$(ls haos_generic-x86-64-*.img.xz | head -n1)
+          mkdir -p "$GITHUB_WORKSPACE/rilascio"
+          cp "$IMG" "$GITHUB_WORKSPACE/rilascio/MDM-Smart-OS_${OSV}.img.xz"
+          # Il pacchetto di aggiornamento deve mantenere il nome tecnico
+          cp haos_generic-x86-64-*.raucb "$GITHUB_WORKSPACE/rilascio/" 2>/dev/null || true
+          cd "$GITHUB_WORKSPACE/rilascio" && sha256sum * > SHA256SUMS && ls -la
+
+      - name: Pubblica la release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.OSV }}
+          name: MDM Smart OS ${{ env.OSV }}
+          body: |
+            File da installare sui NUC: **MDM-Smart-OS_${{ env.OSV }}.img.xz**
+            Scrivilo sul disco del NUC con Balena Etcher.
+          files: rilascio/*
+          make_latest: true
