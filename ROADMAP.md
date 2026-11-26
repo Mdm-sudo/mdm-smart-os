@@ -19,5 +19,8 @@
    - Pagina "Allarme Ajax" nel menu tecnico per la configurazione
 8. **Alexa e Google** gratis e in locale tramite Matter (QR code dalla pagina "Assistenti vocali"); allarme e cancello esclusi di serie
 9. **Avvisi AI solo per il tecnico**: controlli fissi (connessione, batterie, dispositivi che non rispondono) + piccola AI che scrive il messaggio; invio su app MDM o Telegram
-10. **Collegamento tra più case dello stesso cliente**, attivabile e disattivabile; ogni casa resta indipendente
+10. **Collegamento tra più case dello stesso cliente**
+    - Spento di serie: si attiva o si disattiva con un interruttore, casa per casa, dal menu tecnico
+    - Si sceglie cosa condividere (solo stato, oppure anche comandi e automazioni tra le case)
+    - Se si spegne o salta il collegamento, ogni casa continua a funzionare da sola
 11. Icone delle integrazioni copiate su server MDM (non più scaricate dal server di Home Assistant)
