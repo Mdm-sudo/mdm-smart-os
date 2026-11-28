@@ -1,0 +1,59 @@
+{
+  "version": 1,
+  "minor_version": 1,
+  "key": "lovelace",
+  "data": {
+    "config": {
+      "kiosk_mode": {
+        "non_admin_settings": {
+          "hide_sidebar": true,
+          "hide_menubutton": true,
+          "hide_search": true,
+          "hide_assistant": true,
+          "hide_edit_dashboard": true,
+          "hide_settings": true,
+          "hide_add_to_home_assistant": true,
+          "hide_dialog_header_settings": true,
+          "hide_dialog_header_add_to": true,
+          "hide_dialog_update_actions": true,
+          "hide_unused_entities": true
+        }
+      },
+      "title": "Casa",
+      "views": [
+        {
+          "title": "Casa",
+          "path": "casa",
+          "icon": "mdi:home",
+          "strategy": {
+            "type": "original-states"
+          }
+        },
+        {
+          "title": "Le mie automazioni",
+          "path": "automazioni",
+          "icon": "mdi:clock-outline",
+          "type": "sections",
+          "max_columns": 2,
+          "sections": [
+            {
+              "type": "grid",
+              "column_span": 2,
+              "cards": [
+                {
+                  "type": "heading",
+                  "heading": "Le mie automazioni",
+                  "heading_style": "title"
+                },
+                {
+                  "type": "custom:scheduler-card",
+                  "title": false
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

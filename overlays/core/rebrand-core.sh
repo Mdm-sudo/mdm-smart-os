@@ -36,6 +36,10 @@ PYEOF
 # 4) Nome dell'app installabile (titolo scheda, icona sul telefono)
 sed -i -e "s/\"Home Assistant\"/\"${BRAND_NAME}\"/g" "$CORE/components/frontend/__init__.py"
 
+# 4b) Configurazione MDM copiata in /config al primo avvio
+"$PY" /tmp/mdm/preconfig.py
+"$PY" -m compileall -q "$CORE/config.py" || true
+
 # 5) Ricompila la cache Python del file modificato
 "$PY" -m compileall -q "$CORE/components/frontend/__init__.py" || true
 

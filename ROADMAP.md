@@ -24,3 +24,9 @@
     - Si sceglie cosa condividere (solo stato, oppure anche comandi e automazioni tra le case)
     - Se si spegne o salta il collegamento, ogni casa continua a funzionare da sola
 11. Icone delle integrazioni copiate su server MDM (non più scaricate dal server di Home Assistant)
+
+## In lavorazione (avvio automatico MDM)
+- Configurazione copiata al primo avvio: tema scuro MDM, schermo intero per il cliente (niente menu laterale), "Le mie automazioni" (Scheduler)
+- App installate da sole: Mosquitto, Node-RED, Zigbee2MQTT (coordinatore trovato da solo), Matter Hub per Alexa e Google, Cloudflared (in attesa del token)
+- Secondo coordinatore Zigbee: servizio "MDM Smart: Aggiungi coordinatore Zigbee" (seconda rete Zigbee2MQTT)
+- Riscaldamento Node-RED: rimandato
