@@ -106,6 +106,12 @@ def _avanzamento(hass: HomeAssistant, perc: int, passo: str, fatto: bool = False
 async def _configura(hass: HomeAssistant, store: Store) -> None:
     stato: dict = await store.async_load() or {}
 
+    # Pagina iniziale "Casa" per tutti, niente "Panoramica" standard
+    try:
+        await _imposta_pagine(hass)
+    except Exception as err:  # noqa: BLE001
+        _LOGGER.warning("Pagine MDM non impostate: %s", err)
+
     # Tema scuro MDM per tutti (anche se la configurazione è già fatta)
     try:
         # Sempre scuro: MDM sia come tema chiaro sia come tema scuro
@@ -234,3 +240,57 @@ async def _attiva_automazioni_cliente(hass: HomeAssistant) -> None:
             await hass.config_entries.flow.async_configure(res["flow_id"], {})
     except Exception as err:  # noqa: BLE001
         _LOGGER.warning("Automazioni cliente non attivate: %s", err)
+
+
+# Pagine del menu: (titolo, icona, solo tecnico, visibile nel menu)
+PAGINE: dict[str, dict[str, Any]] = {
+    "lovelace": {"title": "Casa", "icon": "mdi:home-variant", "show_in_sidebar": True},
+    "home": {"show_in_sidebar": False, "require_admin": True},
+    "map": {"require_admin": True},
+    "energy": {"require_admin": True},
+    "logbook": {"require_admin": True},
+    "history": {"require_admin": True},
+    "media-browser": {"require_admin": True},
+    "todo": {"require_admin": True},
+}
+
+
+async def _imposta_pagine(hass: HomeAssistant) -> None:
+    """La pagina MDM "Casa" è la pagina iniziale di tutti gli utenti."""
+    from homeassistant.components.frontend import (
+        DATA_PANELS,
+        DATA_PANELS_CONFIG,
+        DATA_PANELS_STORE,
+    )
+    from homeassistant.components.frontend.storage import async_system_store
+    from homeassistant.const import EVENT_PANELS_UPDATED
+
+    pannelli = hass.data.get(DATA_PANELS, {})
+    config = hass.data[DATA_PANELS_CONFIG]
+    cambiato = False
+    for url, voluto in PAGINE.items():
+        if url not in pannelli:
+            continue
+        attuale = dict(config.get(url, {}))
+        nuovo = {**attuale, **voluto}
+        if nuovo != attuale:
+            config[url] = nuovo
+            cambiato = True
+    if cambiato:
+        hass.data[DATA_PANELS_STORE].async_delay_save(lambda: hass.data[DATA_PANELS_CONFIG], 1)
+        hass.bus.async_fire(EVENT_PANELS_UPDATED)
+
+    sistema = await async_system_store(hass)
+
+    @callback
+    def _controlla() -> None:
+        # la creazione del primo utente riscrive questi dati: rimetto "Casa"
+        core = dict(sistema.data.get("core") or {})
+        if core.get("default_panel") != "lovelace":
+            core["default_panel"] = "lovelace"
+            hass.async_create_task(sistema.async_set_item("core", core))
+
+    _controlla()
+    if not hass.data.get("mdm_pagina_iniziale"):
+        hass.data["mdm_pagina_iniziale"] = True
+        sistema.async_subscribe("core", _controlla)
