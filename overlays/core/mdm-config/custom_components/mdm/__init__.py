@@ -91,7 +91,16 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
 
 
 def _avvisa(hass: HomeAssistant, testo: str) -> None:
+    """Avviso solo per problemi (visibile al tecnico)."""
     persistent_notification.async_create(hass, testo, title="MDM Smart", notification_id=NOTIFICA)
+
+
+def _avanzamento(hass: HomeAssistant, perc: int, passo: str, fatto: bool = False) -> None:
+    """Stato letto dalla schermata di caricamento MDM."""
+    hass.states.async_set(
+        "sensor.mdm_preparazione", perc,
+        {"passo": passo, "fatto": fatto, "unit_of_measurement": "%", "friendly_name": "Preparazione MDM", "icon": "mdi:progress-wrench"},
+    )
 
 
 async def _configura(hass: HomeAssistant, store: Store) -> None:
@@ -108,14 +117,17 @@ async def _configura(hass: HomeAssistant, store: Store) -> None:
     await _attiva_automazioni_cliente(hass)
 
     if stato.get("fatto"):
+        _avanzamento(hass, 100, "Pronto", True)
         return
     if "SUPERVISOR_TOKEN" not in os.environ:
         _LOGGER.warning("Supervisor non disponibile: installazione app saltata")
+        _avanzamento(hass, 100, "Pronto", True)
         return
 
     sup = Supervisor(hass)
-    _avvisa(hass, "Sto preparando il sistema: installo le app MDM (Node-RED, Zigbee, accesso remoto, Alexa e Google). Ci vogliono alcuni minuti, non spegnere.")
+    _avanzamento(hass, 5, "Preparo l'archivio delle app")
     esiti: list[str] = []
+    problemi: list[str] = []
 
     for repo in REPOSITORY:
         try:
@@ -130,10 +142,11 @@ async def _configura(hass: HomeAssistant, store: Store) -> None:
     negozio = await sup.get("/store")
     disponibili = [a["slug"] for a in negozio.get("addons", [])]
 
-    for fine, nome, avvia in APP:
+    for i, (fine, nome, avvia) in enumerate(APP):
+        _avanzamento(hass, 15 + i * 80 // len(APP), f"Installo {nome}")
         slug = next((s for s in disponibili if s == fine or s.endswith(fine)), None)
         if not slug:
-            esiti.append(f"✗ {nome}: non trovata")
+            problemi.append(f"✗ {nome}: non trovata")
             continue
         try:
             info = await sup.get(f"/addons/{slug}/info")
@@ -155,7 +168,6 @@ async def _configura(hass: HomeAssistant, store: Store) -> None:
                     parti = True
                 else:
                     parti = False
-                    esiti.append("• Zigbee2MQTT: collega la chiavetta Zigbee e avviala dal menu tecnico")
 
             await sup.post(f"/addons/{slug}/options", {"options": opzioni, "boot": "auto" if parti else "manual", "watchdog": True})
             if parti and info.get("state") != "started":
@@ -163,10 +175,13 @@ async def _configura(hass: HomeAssistant, store: Store) -> None:
             esiti.append(f"✓ {nome}")
         except Exception as err:  # noqa: BLE001
             _LOGGER.exception("App %s", nome)
-            esiti.append(f"✗ {nome}: {err}")
+            problemi.append(f"✗ {nome}: {err}")
 
     await store.async_save({"fatto": True})
-    _avvisa(hass, "Configurazione MDM completata.\n\n" + "\n".join(esiti) + "\n\nAccesso remoto: inserisci il token del tunnel nell'app Cloudflared.")
+    _avanzamento(hass, 100, "Pronto", True)
+    _LOGGER.info("Configurazione MDM completata: %s", ", ".join(esiti))
+    if problemi:
+        _avvisa(hass, "Configurazione MDM: alcune app non si sono installate.\n\n" + "\n".join(problemi))
 
 
 async def _porte_zigbee(sup: Supervisor) -> list[str]:
