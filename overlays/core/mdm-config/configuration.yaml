@@ -5,11 +5,6 @@ default_config:
 
 frontend:
   themes: !include_dir_merge_named themes
-  extra_module_url:
-    - /local/mdm/kiosk-mode.js?v=1
-    - /local/mdm/scheduler-card.js?v=1
-    - /local/mdm/mdm-preparazione.js?v=1
-    - /local/mdm/mdm-casa.js?v=1
 
 http: !include mdm/http.yaml
 

@@ -67,8 +67,16 @@ class Supervisor:
             return d.get("data")
 
 
+MODULI = ["/local/mdm/kiosk-mode.js?v=1", "/local/mdm/scheduler-card.js?v=1", "/local/mdm/mdm-preparazione.js?v=1", "/local/mdm/mdm-casa.js?v=2"]
+
+
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     store: Store = Store(hass, 1, "mdm_setup")
+
+    # Grafica MDM caricata sempre, anche nelle case installate prima
+    from homeassistant.components.frontend import add_extra_js_url
+    for url in MODULI:
+        add_extra_js_url(hass, url)
 
     async def avvia(_event=None) -> None:
         hass.async_create_background_task(_configura(hass, store), "mdm_configurazione")
@@ -84,6 +92,14 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     async def servizio_riconfigura(call: ServiceCall) -> None:
         await store.async_save({})
         await _configura(hass, store)
+
+    # Aggiornamento automatico ogni notte alle 3:30 (sistema, motore e app)
+    from homeassistant.helpers.event import async_track_time_change
+
+    async def notte(_now) -> None:
+        hass.async_create_background_task(_aggiorna_di_notte(hass), "mdm_aggiornamento")
+
+    async_track_time_change(hass, notte, hour=3, minute=30, second=0)
 
     hass.services.async_register(DOMAIN, "aggiungi_coordinatore_zigbee", servizio_coordinatore)
     hass.services.async_register(DOMAIN, "riconfigura", servizio_riconfigura)
@@ -108,6 +124,7 @@ async def _configura(hass: HomeAssistant, store: Store) -> None:
 
     # Pagina iniziale "Casa" per tutti, niente "Panoramica" standard
     try:
+        await _pagina_casa(hass)
         await _imposta_pagine(hass)
     except Exception as err:  # noqa: BLE001
         _LOGGER.warning("Pagine MDM non impostate: %s", err)
@@ -175,7 +192,7 @@ async def _configura(hass: HomeAssistant, store: Store) -> None:
                 else:
                     parti = False
 
-            await sup.post(f"/addons/{slug}/options", {"options": opzioni, "boot": "auto" if parti else "manual", "watchdog": True})
+            await sup.post(f"/addons/{slug}/options", {"options": opzioni, "boot": "auto" if parti else "manual", "watchdog": True, "auto_update": True})
             if parti and info.get("state") != "started":
                 await sup.post(f"/addons/{slug}/start", timeout=600)
             esiti.append(f"✓ {nome}")
@@ -294,3 +311,48 @@ async def _imposta_pagine(hass: HomeAssistant) -> None:
     if not hass.data.get("mdm_pagina_iniziale"):
         hass.data["mdm_pagina_iniziale"] = True
         sistema.async_subscribe("core", _controlla)
+
+
+async def _pagina_casa(hass: HomeAssistant) -> None:
+    """Porta una sola volta la dashboard principale alla pagina Casa MDM."""
+    from homeassistant.components.lovelace.const import LOVELACE_DATA
+
+    fatto: Store = Store(hass, 1, "mdm_pagina_casa")
+    if (await fatto.async_load() or {}).get("versione", 0) >= 1:
+        return
+    dash = hass.data[LOVELACE_DATA].dashboards.get(None)
+    if dash is None:
+        return
+    try:
+        vecchia = await dash.async_load(False)
+    except Exception:  # noqa: BLE001  (nessuna configurazione salvata)
+        vecchia = None
+    if not (isinstance(vecchia, dict) and vecchia.get("strategy", {}).get("type") == "custom:mdm-casa"):
+        await dash.async_save({"strategy": {"type": "custom:mdm-casa", "sottotitolo": "Benvenuto nel tuo MDM Impianti smart", "sfondo": "auto"}})
+    await fatto.async_save({"versione": 1, "precedente": vecchia})
+
+
+async def _aggiorna_di_notte(hass: HomeAssistant) -> None:
+    """Di notte installa da solo gli aggiornamenti MDM (prima le app, poi il motore, poi il sistema)."""
+    if "SUPERVISOR_TOKEN" not in os.environ:
+        return
+    sup = Supervisor(hass)
+    try:
+        for app in (await sup.get("/addons")).get("addons", []):
+            if app.get("update_available"):
+                try:
+                    await sup.post(f"/addons/{app['slug']}/options", {"auto_update": True})
+                    await sup.post(f"/store/addons/{app['slug']}/update", {"backup": False}, timeout=1800)
+                except Exception as err:  # noqa: BLE001
+                    _LOGGER.warning("Aggiornamento app %s: %s", app.get("slug"), err)
+        sistema = await sup.get("/os/info")
+        if sistema.get("update_available"):
+            _LOGGER.info("Aggiorno MDM Smart OS a %s", sistema.get("version_latest"))
+            await sup.post("/os/update", {}, timeout=3600)  # riavvia da solo
+            return
+        motore = await sup.get("/core/info")
+        if motore.get("update_available") or (motore.get("version_latest") and motore.get("version") != motore.get("version_latest")):
+            _LOGGER.info("Aggiorno MDM Smart a %s", motore.get("version_latest"))
+            await sup.post("/core/update", {"backup": True}, timeout=3600)
+    except Exception as err:  # noqa: BLE001
+        _LOGGER.warning("Aggiornamento notturno MDM: %s", err)
