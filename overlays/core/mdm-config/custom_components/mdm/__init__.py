@@ -99,6 +99,8 @@ async def _configura(hass: HomeAssistant, store: Store) -> None:
 
     # Tema scuro MDM per tutti (anche se la configurazione è già fatta)
     try:
+        # Sempre scuro: MDM sia come tema chiaro sia come tema scuro
+        await hass.services.async_call("frontend", "set_theme", {"name": "MDM"}, blocking=True)
         await hass.services.async_call("frontend", "set_theme", {"name": "MDM", "mode": "dark"}, blocking=True)
     except Exception as err:  # noqa: BLE001
         _LOGGER.warning("Tema MDM non impostato: %s", err)
