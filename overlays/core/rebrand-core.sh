@@ -15,6 +15,9 @@ bash /tmp/mdm/rebrand-text.sh "$FRONTEND"
 # 2) Icone e loghi
 bash /tmp/mdm/apply-icons.sh /tmp/mdm/icons "$FRONTEND/static/icons"
 
+# 2b) Schermata di caricamento e accesso: logo MDM, sfondo scuro
+bash /tmp/mdm/schermata-avvio.sh "$FRONTEND"
+
 # 3) Motore: traduzioni e nomi mostrati nell'interfaccia (solo file JSON,
 #    il codice Python non viene toccato per non rompere il funzionamento)
 REBRAND_EXT="json" bash /tmp/mdm/rebrand-text.sh "$CORE"
