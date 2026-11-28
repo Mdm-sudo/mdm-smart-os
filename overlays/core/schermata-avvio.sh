@@ -17,5 +17,14 @@ for f in "$FRONTEND/index.html" "$FRONTEND/authorize.html" "$FRONTEND/onboarding
     if command -v brotli >/dev/null; then brotli -q 11 -f -k "$f"; else rm -f "$f.br"; fi
   fi
 done
+CSS="$(cat /tmp/mdm/scuro.css)"
+for f in "$FRONTEND/authorize.html" "$FRONTEND/onboarding.html"; do
+  [ -f "$f" ] || continue
+  CSS="$CSS" perl -0pi -e 's#</head>#<style>$ENV{CSS}</style></head>#' "$f"
+  [ -f "$f.gz" ] && gzip -9 -n -k -f "$f"
+  if [ -f "$f.br" ]; then
+    if command -v brotli >/dev/null; then brotli -q 11 -f -k "$f"; else rm -f "$f.br"; fi
+  fi
+done
 grep -q "ha-launch-screen" "$FRONTEND/index.html" && ! grep -q "ohf-badge" "$FRONTEND/index.html"
 echo "schermata-avvio: logo MDM e sfondo scuro applicati"

@@ -9,7 +9,7 @@ ARG BRAND_OS
 
 COPY scripts/rebrand-text.sh scripts/apply-icons.sh /tmp/mdm/
 COPY build/icons/ /tmp/mdm/icons/
-COPY overlays/core/rebrand-core.sh overlays/core/schermata-avvio.sh overlays/core/preconfig.py /tmp/mdm/
+COPY overlays/core/rebrand-core.sh overlays/core/schermata-avvio.sh overlays/core/preconfig.py overlays/scuro.css /tmp/mdm/
 COPY overlays/core/mdm-config/ /usr/share/mdm/config/
 
 RUN set -eu; \
