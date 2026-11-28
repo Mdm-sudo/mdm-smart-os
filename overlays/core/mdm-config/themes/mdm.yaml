@@ -5,7 +5,7 @@ MDM:
   primary-background-color: "#0f0a1e"
   secondary-background-color: "#170f2e"
   card-background-color: "#1b1433"
-  ha-card-background: "#1b1433"
+  ha-card-background: "rgba(27, 20, 51, 0.82)"
   ha-card-border-color: "#2c2350"
   ha-card-border-radius: "18px"
   app-header-background-color: "#0f0a1e"

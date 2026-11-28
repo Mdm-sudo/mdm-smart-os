@@ -9,6 +9,7 @@ frontend:
     - /local/mdm/kiosk-mode.js?v=1
     - /local/mdm/scheduler-card.js?v=1
     - /local/mdm/mdm-preparazione.js?v=1
+    - /local/mdm/mdm-casa.js?v=1
 
 http: !include mdm/http.yaml
 
